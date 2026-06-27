@@ -1,0 +1,439 @@
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #2b2b2b;
+    margin: 0;
+    flex-direction: column;
+    gap: 0;
+}
+
+/* ─── Game Mode Modal ─────────────────────────────────────── */
+#mode-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+    animation: endFadeIn 0.35s ease forwards;
+}
+
+#mode-modal {
+    background: linear-gradient(160deg, #2a1c0e 0%, #3b2a1a 60%, #2a1c0e 100%);
+    border: 2px solid #d4af37;
+    border-radius: 20px;
+    padding: 40px 44px;
+    text-align: center;
+    font-family: 'Georgia', serif;
+    color: #f0dbb5;
+    width: 420px;
+    position: relative;
+    margin: auto;
+    box-shadow: 0 0 60px rgba(212,175,55,0.3), 0 8px 40px rgba(0,0,0,0.7);
+    animation: endBoxIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+#mode-modal h2 {
+    margin: 8px 0 6px;
+    font-size: 30px;
+    font-family: 'Georgia', serif;
+    font-weight: bold;
+    letter-spacing: 4px;
+    color: #d4af37;
+    text-transform: uppercase;
+    text-shadow: 0 0 24px rgba(212,175,55,0.5);
+}
+
+#mode-modal p {
+    margin: 0 0 6px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #7a5a30;
+    font-family: 'Georgia', serif;
+}
+
+/* Divider under subtitle */
+#mode-modal .modal-divider {
+    width: 60px;
+    height: 1px;
+    background: linear-gradient(to right, transparent, #d4af37, transparent);
+    margin: 12px auto 24px;
+}
+
+.mode-btn {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(212,175,55,0.2);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+    width: 100%;
+    text-align: left;
+    color: #f0dbb5;
+    box-sizing: border-box;
+    position: relative;
+    overflow: hidden;
+}
+
+.mode-btn::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: #d4af37;
+    border-radius: 12px 0 0 12px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.mode-btn:hover {
+    background: rgba(212,175,55,0.08);
+    border-color: rgba(212,175,55,0.5);
+    transform: translateX(4px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.mode-btn:hover::before {
+    opacity: 1;
+}
+
+.mode-btn .mode-icon {
+    font-size: 26px;
+    flex-shrink: 0;
+    width: 36px;
+    text-align: center;
+}
+
+.mode-btn .mode-info strong {
+    display: block;
+    font-size: 16px;
+    font-family: 'Georgia', serif;
+    font-weight: bold;
+    color: #e8c98a;
+    letter-spacing: 1px;
+}
+
+.mode-btn .mode-info span {
+    font-size: 12px;
+    font-family: 'Georgia', serif;
+    color: #a08060;
+}
+
+/* ─── Board Wrapper & Timer Panels ───────────────────────── */
+#game-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+}
+
+.timer-panel {
+    width: 560px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    box-sizing: border-box;
+    background: #4a3520;
+    border: 2px solid #5a3921;
+    gap: 10px;
+}
+
+.timer-panel.top    { border-bottom: none; border-radius: 10px 10px 0 0; }
+.timer-panel.bottom { border-top: none;    border-radius: 0 0 10px 10px; }
+
+/* Captured pieces strip */
+.captured-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1px;
+    flex: 1;
+    min-width: 0;
+}
+
+.captured-piece-img {
+    width: 22px;
+    height: 22px;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+    opacity: 0.92;
+}
+
+.player-label {
+    font-family: 'Georgia', serif;
+    font-size: 15px;
+    font-weight: bold;
+    color: #b09060;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.pawn-icon {
+    font-size: 18px;
+}
+
+.white-pawn { color: #ffffff; text-shadow: 0 0 3px rgba(0,0,0,0.8); }
+.black-pawn { color: #1a1a1a; text-shadow: 0 0 3px rgba(255,255,255,0.2); }
+
+.timer-display {
+    font-family: 'Courier New', monospace;
+    font-size: 28px;
+    font-weight: bold;
+    color: #e8c98a;
+    background: #2e1f0e;
+    border: 2px solid #5a3921;
+    border-radius: 7px;
+    padding: 4px 16px;
+    min-width: 110px;
+    text-align: center;
+    letter-spacing: 2px;
+    transition: color 0.3s, border-color 0.3s, background 0.3s;
+}
+
+/* Active (running) timer */
+.timer-panel.active .timer-display {
+    color: #ffffff;
+    border-color: #e8c98a;
+    background: #3a2510;
+    box-shadow: 0 0 10px rgba(232, 201, 138, 0.25);
+}
+
+/* Low time warning (<= 30s) */
+.timer-display.low-time {
+    color: #ff3333 !important;
+    border-color: #ff0000 !important;
+    background: #3a1010 !important;
+}
+
+.mode-badge {
+    font-family: Arial, sans-serif;
+    font-size: 11px;
+    color: #7a5a30;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+#chessboard {
+    display: grid;
+    grid-template-columns: repeat(8, 70px);
+    grid-template-rows: repeat(8, 70px);
+    width: 560px;
+    height: 560px;
+    border: 12px solid #5a3921;
+    position: relative; /* needed for absolute-positioned flying piece */
+}
+
+.square {
+    width: 70px;
+    height: 70px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+}
+
+.white { background-color: #eaddca; }
+.black { background-color: #a4764f; }
+
+.selected {
+    background-color: rgba(235, 235, 50, 0.5) !important;
+}
+
+.in-check {
+    background-color: rgba(200, 0, 0, 0.65) !important;
+}
+
+.piece {
+    width: 95%;
+    height: 95%;
+    pointer-events: none;
+    filter: drop-shadow(0px 5px 3px rgba(0, 0, 0, 0.6));
+}
+
+/* Flying piece during slide animation */
+.piece-flying {
+    position: absolute;
+    width: 66px;   /* 95% of 70px */
+    height: 66px;
+    pointer-events: none;
+    filter: drop-shadow(0px 5px 3px rgba(0, 0, 0, 0.6));
+    z-index: 500;
+    transition: left 0.13s cubic-bezier(0.25, 0.8, 0.25, 1),
+                top  0.13s cubic-bezier(0.25, 0.8, 0.25, 1);
+    will-change: left, top;
+}
+
+/* Shake animation for illegal moves */
+@keyframes shake {
+    0%   { transform: translateX(0); }
+    20%  { transform: translateX(-5px); }
+    40%  { transform: translateX(5px); }
+    60%  { transform: translateX(-4px); }
+    80%  { transform: translateX(4px); }
+    100% { transform: translateX(0); }
+}
+
+.shake {
+    animation: shake 0.25s ease;
+}
+
+/* Check pulse on king */
+@keyframes checkPulse {
+    0%, 100% { background-color: rgba(200, 0, 0, 0.65); }
+    50%       { background-color: rgba(255, 60, 60, 0.85); }
+}
+
+.in-check {
+    animation: checkPulse 0.7s ease infinite !important;
+}
+
+.coordinate {
+    position: absolute;
+    font-size: 13px;
+    font-weight: bold;
+    font-family: Arial, sans-serif;
+    pointer-events: none;
+}
+
+.rank { top: 2px; left: 4px; }
+.file { bottom: 2px; right: 4px; }
+
+.white .coordinate { color: #a4764f; }
+.black .coordinate { color: #eaddca; }
+
+/* Legal move dot */
+.legal-move::after {
+    content: '';
+    position: absolute;
+    width: 30%;
+    height: 30%;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* Legal capture ring */
+.legal-capture::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 6px rgba(0, 0, 0, 0.2);
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* ─── Mode row chip sub-options ───────────────────────────── */
+.mode-row { align-items: center; cursor: default; }
+
+.blitz-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex-shrink: 0;
+    justify-content: flex-end;
+    max-width: 180px;
+}
+
+.blitz-chip {
+    background: transparent;
+    border: 1px solid rgba(212,175,55,0.4);
+    border-radius: 6px;
+    color: #d4af37;
+    font-family: 'Georgia', serif;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s, color 0.15s;
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+}
+
+.blitz-chip:hover {
+    background: #d4af37;
+    border-color: #d4af37;
+    color: #1a0e05;
+    transform: scale(1.08);
+}
+
+/* ─── Check Notification Overlay ─────────────────────────── */
+#check-notify {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    pointer-events: none;
+}
+
+#check-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center,
+        transparent 30%,
+        rgba(0, 0, 0, 0.72) 100%);
+    animation: vignetteIn 0.25s ease forwards;
+}
+
+#check-badge {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.7);
+    background: rgba(20, 0, 0, 0.88);
+    border: 2px solid #cc2222;
+    border-radius: 10px;
+    color: #ff6060;
+    font-family: 'Georgia', serif;
+    font-size: 22px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    padding: 14px 36px;
+    white-space: nowrap;
+    box-shadow: 0 0 32px rgba(200, 0, 0, 0.55), 0 0 8px rgba(200, 0, 0, 0.3);
+    animation: badgeIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes vignetteIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes badgeIn {
+    from { transform: translate(-50%, -50%) scale(0.7); opacity: 0; }
+    to   { transform: translate(-50%, -50%) scale(1);   opacity: 1; }
+}
+
+.check-notify-out #check-vignette,
+.check-notify-out #check-badge {
+    animation: checkFadeOut 0.3s ease forwards !important;
+}
+
+@keyframes checkFadeOut {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+}
+
+/* ─── End Game Modal ──────────────────────────────────────── */
+@keyframes endFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes endBoxIn {
+    from { transform: scale(0.75) translateY(30px); opacity: 0; }
+    to   { transform: scale(1)    translateY(0);    opacity: 1; }
+}
