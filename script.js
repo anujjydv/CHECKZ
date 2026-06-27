@@ -218,6 +218,10 @@ function addModeRow(modal, overlay, { icon, label, chips }) {
 }
 
 function startGame(modeKey) {
+    // First user gesture on the page — resume the audio context right here
+    // so it's already running by the time the first move sound fires.
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
     gameMode = modeKey;
     const m = GAME_MODES[modeKey];
     timers.white = m.seconds;
@@ -782,8 +786,21 @@ function restartGame() {
     showModeModal();
 }
 
+/* ─── Audio engine ─────────────────────────────────────────
+   Single playSound definition. A master gain node controls
+   overall volume (VOL) so we don't have to multiply every
+   individual gain value by hand. The AudioContext is resumed
+   on the first user gesture (mode-select click in startGame),
+   and playSound() also defers scheduling until resume()
+   actually resolves if the context is still suspended — this
+   is what fixes "no sound on the very first move".
+------------------------------------------------------------- */
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const VOL = 0.35;
+
+const masterGain = audioCtx.createGain();
+masterGain.gain.value = VOL;
+masterGain.connect(audioCtx.destination);
 
 function makeNoise(ctx, duration) {
     const len = Math.ceil(ctx.sampleRate * duration);
@@ -802,7 +819,7 @@ function woodThud(ctx, freq, gain, attack, decay, startTime) {
     osc.frequency.setValueAtTime(freq * 2.1, startTime);
     osc.frequency.exponentialRampToValueAtTime(freq, startTime + 0.012);
     oscGain.gain.setValueAtTime(0, startTime);
-    oscGain.gain.linearRampToValueAtTime(gain * VOL, startTime + attack);
+    oscGain.gain.linearRampToValueAtTime(gain, startTime + attack);
     oscGain.gain.exponentialRampToValueAtTime(0.001, startTime + decay);
     osc.connect(oscGain);
     osc.start(startTime);
@@ -818,7 +835,7 @@ function clickTransient(ctx, gain, startTime) {
     filter.frequency.exponentialRampToValueAtTime(1200, startTime + 0.02);
     filter.Q.value = 0.7;
     const g = ctx.createGain();
-    g.gain.setValueAtTime(gain * VOL, startTime);
+    g.gain.setValueAtTime(gain, startTime);
     g.gain.exponentialRampToValueAtTime(0.001, startTime + 0.022);
     n.connect(filter); filter.connect(g);
     n.start(startTime); n.stop(startTime + 0.025);
@@ -827,251 +844,134 @@ function clickTransient(ctx, gain, startTime) {
 
 function playSound(type) {
     const ctx = audioCtx;
-    if (ctx.state === 'suspended') ctx.resume();
-    const out = ctx.destination;
-    const now = ctx.currentTime;
 
-    if (type === 'move') {
-        const thud = woodThud(ctx, 220, 0.55, 0.003, 0.09, now);
-        thud.connect(out);
-        const click = clickTransient(ctx, 0.4, now);
-        click.connect(out);
-        const body = makeNoise(ctx, 0.07);
-        const bodyF = ctx.createBiquadFilter();
-        bodyF.type = 'bandpass'; bodyF.frequency.value = 900; bodyF.Q.value = 2;
-        const bodyG = ctx.createGain();
-        bodyG.gain.setValueAtTime(0.12 * VOL, now);
-        bodyG.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
-        body.connect(bodyF); bodyF.connect(bodyG); bodyG.connect(out);
-        body.start(now); body.stop(now + 0.07);
+    const schedule = () => {
+        const out = masterGain;
+        const now = ctx.currentTime;
 
-    } else if (type === 'capture') {
-        const thud1 = woodThud(ctx, 160, 0.7, 0.002, 0.12, now);
-        thud1.connect(out);
-        const thud2 = woodThud(ctx, 110, 0.5, 0.003, 0.18, now + 0.015);
-        thud2.connect(out);
-        const click = clickTransient(ctx, 0.65, now);
-        click.connect(out);
-        const scatter = makeNoise(ctx, 0.15);
-        const scatterF = ctx.createBiquadFilter();
-        scatterF.type = 'bandpass'; scatterF.frequency.value = 1800; scatterF.Q.value = 1.2;
-        const scatterG = ctx.createGain();
-        scatterG.gain.setValueAtTime(0, now);
-        scatterG.gain.linearRampToValueAtTime(0.18 * VOL, now + 0.008);
-        scatterG.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-        scatter.connect(scatterF); scatterF.connect(scatterG); scatterG.connect(out);
-        scatter.start(now); scatter.stop(now + 0.15);
-
-    } else if (type === 'check') {
-        [[0, 523, 0.22], [0.14, 659, 0.2], [0.28, 784, 0.28]].forEach(([delay, freq, vol]) => {
-            const o = ctx.createOscillator();
-            const g = ctx.createGain();
-            o.type = 'triangle';
-            o.frequency.setValueAtTime(freq, now + delay);
-            g.gain.setValueAtTime(0, now + delay);
-            g.gain.linearRampToValueAtTime(vol * VOL, now + delay + 0.01);
-            g.gain.setValueAtTime(vol * VOL * 0.7, now + delay + 0.06);
-            g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.3);
-            o.connect(g); g.connect(out);
-            o.start(now + delay); o.stop(now + delay + 0.35);
-            const ting = clickTransient(ctx, 0.15, now + delay);
-            ting.connect(out);
-        });
-
-    } else if (type === 'castle') {
-        [0, 0.16].forEach((delay, i) => {
-            const thud = woodThud(ctx, [200, 170][i], [0.5, 0.45][i], 0.003, 0.1, now + delay);
+        if (type === 'move') {
+            const thud = woodThud(ctx, 220, 0.55, 0.003, 0.09, now);
             thud.connect(out);
-            const click = clickTransient(ctx, [0.35, 0.3][i], now + delay);
+            const click = clickTransient(ctx, 0.4, now);
             click.connect(out);
-        });
+            const body = makeNoise(ctx, 0.07);
+            const bodyF = ctx.createBiquadFilter();
+            bodyF.type = 'bandpass'; bodyF.frequency.value = 900; bodyF.Q.value = 2;
+            const bodyG = ctx.createGain();
+            bodyG.gain.setValueAtTime(0.12, now);
+            bodyG.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+            body.connect(bodyF); bodyF.connect(bodyG); bodyG.connect(out);
+            body.start(now); body.stop(now + 0.07);
 
-    } else if (type === 'promote') {
-        const thud = woodThud(ctx, 260, 0.5, 0.003, 0.1, now);
-        thud.connect(out);
-        const click = clickTransient(ctx, 0.4, now);
-        click.connect(out);
-        [[0.08, 392, 0.18], [0.2, 523, 0.2], [0.33, 659, 0.22], [0.47, 784, 0.26]].forEach(([delay, freq, vol]) => {
-            const o = ctx.createOscillator();
-            const g = ctx.createGain();
-            o.type = 'sine';
-            o.frequency.setValueAtTime(freq, now + delay);
-            g.gain.setValueAtTime(0, now + delay);
-            g.gain.linearRampToValueAtTime(vol * VOL, now + delay + 0.015);
-            g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.28);
-            o.connect(g); g.connect(out);
-            o.start(now + delay); o.stop(now + delay + 0.32);
-        });
+        } else if (type === 'capture') {
+            const thud1 = woodThud(ctx, 160, 0.7, 0.002, 0.12, now);
+            thud1.connect(out);
+            const thud2 = woodThud(ctx, 110, 0.5, 0.003, 0.18, now + 0.015);
+            thud2.connect(out);
+            const click = clickTransient(ctx, 0.65, now);
+            click.connect(out);
+            const scatter = makeNoise(ctx, 0.15);
+            const scatterF = ctx.createBiquadFilter();
+            scatterF.type = 'bandpass'; scatterF.frequency.value = 1800; scatterF.Q.value = 1.2;
+            const scatterG = ctx.createGain();
+            scatterG.gain.setValueAtTime(0, now);
+            scatterG.gain.linearRampToValueAtTime(0.18, now + 0.008);
+            scatterG.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+            scatter.connect(scatterF); scatterF.connect(scatterG); scatterG.connect(out);
+            scatter.start(now); scatter.stop(now + 0.15);
 
-    } else if (type === 'gameover') {
-        [[0, 392], [0.32, 349], [0.65, 294], [1.05, 196]].forEach(([delay, freq], i) => {
-            const o = ctx.createOscillator();
-            const g = ctx.createGain();
-            o.type = 'sine';
-            o.frequency.setValueAtTime(freq, now + delay);
-            g.gain.setValueAtTime(0, now + delay);
-            g.gain.linearRampToValueAtTime((0.28 - i * 0.02) * VOL, now + delay + 0.02);
-            g.gain.setValueAtTime((0.28 - i * 0.02) * VOL, now + delay + 0.18);
-            g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.55);
-            o.connect(g); g.connect(out);
-            o.start(now + delay); o.stop(now + delay + 0.6);
-            const o2 = ctx.createOscillator();
-            const g2 = ctx.createGain();
-            o2.type = 'sine';
-            o2.frequency.setValueAtTime(freq * 1.5, now + delay);
-            g2.gain.setValueAtTime(0, now + delay);
-            g2.gain.linearRampToValueAtTime(0.08 * VOL, now + delay + 0.02);
-            g2.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.35);
-            o2.connect(g2); g2.connect(out);
-            o2.start(now + delay); o2.stop(now + delay + 0.4);
-        });
+        } else if (type === 'check') {
+            [[0, 523, 0.22], [0.14, 659, 0.2], [0.28, 784, 0.28]].forEach(([delay, freq, vol]) => {
+                const o = ctx.createOscillator();
+                const g = ctx.createGain();
+                o.type = 'triangle';
+                o.frequency.setValueAtTime(freq, now + delay);
+                g.gain.setValueAtTime(0, now + delay);
+                g.gain.linearRampToValueAtTime(vol, now + delay + 0.01);
+                g.gain.setValueAtTime(vol * 0.7, now + delay + 0.06);
+                g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.3);
+                o.connect(g); g.connect(out);
+                o.start(now + delay); o.stop(now + delay + 0.35);
+                const ting = clickTransient(ctx, 0.15, now + delay);
+                ting.connect(out);
+            });
 
-    } else if (type === 'illegal') {
-        const n = makeNoise(ctx, 0.18);
-        const f = ctx.createBiquadFilter();
-        f.type = 'lowpass'; f.frequency.setValueAtTime(600, now);
-        f.frequency.exponentialRampToValueAtTime(150, now + 0.15);
-        const g = ctx.createGain();
-        g.gain.setValueAtTime(0, now);
-        g.gain.linearRampToValueAtTime(0.3 * VOL, now + 0.008);
-        g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-        const dist = ctx.createWaveShaper();
-        const curve = new Float32Array(256);
-        for (let i = 0; i < 256; i++) curve[i] = Math.tanh((i / 128 - 1) * 5);
-        dist.curve = curve;
-        n.connect(dist); dist.connect(f); f.connect(g); g.connect(out);
-        n.start(now); n.stop(now + 0.18);
-        const o = ctx.createOscillator();
-        const og = ctx.createGain();
-        o.type = 'sawtooth'; o.frequency.setValueAtTime(120, now);
-        o.frequency.exponentialRampToValueAtTime(70, now + 0.16);
-        og.gain.setValueAtTime(0.18 * VOL, now); og.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
-        o.connect(og); og.connect(out); o.start(now); o.stop(now + 0.18);
-    }
-}
+        } else if (type === 'castle') {
+            [0, 0.16].forEach((delay, i) => {
+                const thud = woodThud(ctx, [200, 170][i], [0.5, 0.45][i], 0.003, 0.1, now + delay);
+                thud.connect(out);
+                const click = clickTransient(ctx, [0.35, 0.3][i], now + delay);
+                click.connect(out);
+            });
 
-function playSound(type) {
-    const ctx = audioCtx;
-    if (ctx.state === 'suspended') ctx.resume();
-    const out = ctx.destination;
-    const now = ctx.currentTime;
-
-    if (type === 'move') {
-        const thud = woodThud(ctx, 220, 0.55, 0.003, 0.09, now);
-        thud.connect(out);
-        const click = clickTransient(ctx, 0.4, now);
-        click.connect(out);
-        const body = makeNoise(ctx, 0.07);
-        const bodyF = ctx.createBiquadFilter();
-        bodyF.type = 'bandpass'; bodyF.frequency.value = 900; bodyF.Q.value = 2;
-        const bodyG = ctx.createGain();
-        bodyG.gain.setValueAtTime(0.12, now);
-        bodyG.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
-        body.connect(bodyF); bodyF.connect(bodyG); bodyG.connect(out);
-        body.start(now); body.stop(now + 0.07);
-
-    } else if (type === 'capture') {
-        const thud1 = woodThud(ctx, 160, 0.7, 0.002, 0.12, now);
-        thud1.connect(out);
-        const thud2 = woodThud(ctx, 110, 0.5, 0.003, 0.18, now + 0.015);
-        thud2.connect(out);
-        const click = clickTransient(ctx, 0.65, now);
-        click.connect(out);
-        const scatter = makeNoise(ctx, 0.15);
-        const scatterF = ctx.createBiquadFilter();
-        scatterF.type = 'bandpass'; scatterF.frequency.value = 1800; scatterF.Q.value = 1.2;
-        const scatterG = ctx.createGain();
-        scatterG.gain.setValueAtTime(0, now);
-        scatterG.gain.linearRampToValueAtTime(0.18, now + 0.008);
-        scatterG.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-        scatter.connect(scatterF); scatterF.connect(scatterG); scatterG.connect(out);
-        scatter.start(now); scatter.stop(now + 0.15);
-
-    } else if (type === 'check') {
-        [[0, 523, 0.22], [0.14, 659, 0.2], [0.28, 784, 0.28]].forEach(([delay, freq, vol]) => {
-            const o = ctx.createOscillator();
-            const g = ctx.createGain();
-            o.type = 'triangle';
-            o.frequency.setValueAtTime(freq, now + delay);
-            g.gain.setValueAtTime(0, now + delay);
-            g.gain.linearRampToValueAtTime(vol, now + delay + 0.01);
-            g.gain.setValueAtTime(vol * 0.7, now + delay + 0.06);
-            g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.3);
-            o.connect(g); g.connect(out);
-            o.start(now + delay); o.stop(now + delay + 0.35);
-            const ting = clickTransient(ctx, 0.15, now + delay);
-            ting.connect(out);
-        });
-
-    } else if (type === 'castle') {
-        [0, 0.16].forEach((delay, i) => {
-            const thud = woodThud(ctx, [200, 170][i], [0.5, 0.45][i], 0.003, 0.1, now + delay);
+        } else if (type === 'promote') {
+            const thud = woodThud(ctx, 260, 0.5, 0.003, 0.1, now);
             thud.connect(out);
-            const click = clickTransient(ctx, [0.35, 0.3][i], now + delay);
+            const click = clickTransient(ctx, 0.4, now);
             click.connect(out);
-        });
+            [[0.08, 392, 0.18], [0.2, 523, 0.2], [0.33, 659, 0.22], [0.47, 784, 0.26]].forEach(([delay, freq, vol]) => {
+                const o = ctx.createOscillator();
+                const g = ctx.createGain();
+                o.type = 'sine';
+                o.frequency.setValueAtTime(freq, now + delay);
+                g.gain.setValueAtTime(0, now + delay);
+                g.gain.linearRampToValueAtTime(vol, now + delay + 0.015);
+                g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.28);
+                o.connect(g); g.connect(out);
+                o.start(now + delay); o.stop(now + delay + 0.32);
+            });
 
-    } else if (type === 'promote') {
-        const thud = woodThud(ctx, 260, 0.5, 0.003, 0.1, now);
-        thud.connect(out);
-        const click = clickTransient(ctx, 0.4, now);
-        click.connect(out);
-        [[0.08, 392, 0.18], [0.2, 523, 0.2], [0.33, 659, 0.22], [0.47, 784, 0.26]].forEach(([delay, freq, vol]) => {
-            const o = ctx.createOscillator();
+        } else if (type === 'gameover') {
+            [[0, 392], [0.32, 349], [0.65, 294], [1.05, 196]].forEach(([delay, freq], i) => {
+                const o = ctx.createOscillator();
+                const g = ctx.createGain();
+                o.type = 'sine';
+                o.frequency.setValueAtTime(freq, now + delay);
+                g.gain.setValueAtTime(0, now + delay);
+                g.gain.linearRampToValueAtTime(0.28 - i * 0.02, now + delay + 0.02);
+                g.gain.setValueAtTime(0.28 - i * 0.02, now + delay + 0.18);
+                g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.55);
+                o.connect(g); g.connect(out);
+                o.start(now + delay); o.stop(now + delay + 0.6);
+                const o2 = ctx.createOscillator();
+                const g2 = ctx.createGain();
+                o2.type = 'sine';
+                o2.frequency.setValueAtTime(freq * 1.5, now + delay);
+                g2.gain.setValueAtTime(0, now + delay);
+                g2.gain.linearRampToValueAtTime(0.08, now + delay + 0.02);
+                g2.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.35);
+                o2.connect(g2); g2.connect(out);
+                o2.start(now + delay); o2.stop(now + delay + 0.4);
+            });
+
+        } else if (type === 'illegal') {
+            const n = makeNoise(ctx, 0.18);
+            const f = ctx.createBiquadFilter();
+            f.type = 'lowpass'; f.frequency.setValueAtTime(600, now);
+            f.frequency.exponentialRampToValueAtTime(150, now + 0.15);
             const g = ctx.createGain();
-            o.type = 'sine';
-            o.frequency.setValueAtTime(freq, now + delay);
-            g.gain.setValueAtTime(0, now + delay);
-            g.gain.linearRampToValueAtTime(vol, now + delay + 0.015);
-            g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.28);
-            o.connect(g); g.connect(out);
-            o.start(now + delay); o.stop(now + delay + 0.32);
-        });
-
-    } else if (type === 'gameover') {
-        [[0, 392], [0.32, 349], [0.65, 294], [1.05, 196]].forEach(([delay, freq], i) => {
+            g.gain.setValueAtTime(0, now);
+            g.gain.linearRampToValueAtTime(0.3, now + 0.008);
+            g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+            const dist = ctx.createWaveShaper();
+            const curve = new Float32Array(256);
+            for (let i = 0; i < 256; i++) curve[i] = Math.tanh((i / 128 - 1) * 5);
+            dist.curve = curve;
+            n.connect(dist); dist.connect(f); f.connect(g); g.connect(out);
+            n.start(now); n.stop(now + 0.18);
             const o = ctx.createOscillator();
-            const g = ctx.createGain();
-            o.type = 'sine';
-            o.frequency.setValueAtTime(freq, now + delay);
-            g.gain.setValueAtTime(0, now + delay);
-            g.gain.linearRampToValueAtTime(0.28 - i * 0.02, now + delay + 0.02);
-            g.gain.setValueAtTime(0.28 - i * 0.02, now + delay + 0.18);
-            g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.55);
-            o.connect(g); g.connect(out);
-            o.start(now + delay); o.stop(now + delay + 0.6);
-            const o2 = ctx.createOscillator();
-            const g2 = ctx.createGain();
-            o2.type = 'sine';
-            o2.frequency.setValueAtTime(freq * 1.5, now + delay);
-            g2.gain.setValueAtTime(0, now + delay);
-            g2.gain.linearRampToValueAtTime(0.08, now + delay + 0.02);
-            g2.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.35);
-            o2.connect(g2); g2.connect(out);
-            o2.start(now + delay); o2.stop(now + delay + 0.4);
-        });
+            const og = ctx.createGain();
+            o.type = 'sawtooth'; o.frequency.setValueAtTime(120, now);
+            o.frequency.exponentialRampToValueAtTime(70, now + 0.16);
+            og.gain.setValueAtTime(0.18, now); og.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+            o.connect(og); og.connect(out); o.start(now); o.stop(now + 0.18);
+        }
+    };
 
-    } else if (type === 'illegal') {
-        const n = makeNoise(ctx, 0.18);
-        const f = ctx.createBiquadFilter();
-        f.type = 'lowpass'; f.frequency.setValueAtTime(600, now);
-        f.frequency.exponentialRampToValueAtTime(150, now + 0.15);
-        const g = ctx.createGain();
-        g.gain.setValueAtTime(0, now);
-        g.gain.linearRampToValueAtTime(0.3, now + 0.008);
-        g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-        const dist = ctx.createWaveShaper();
-        const curve = new Float32Array(256);
-        for (let i = 0; i < 256; i++) curve[i] = Math.tanh((i / 128 - 1) * 5);
-        dist.curve = curve;
-        n.connect(dist); dist.connect(f); f.connect(g); g.connect(out);
-        n.start(now); n.stop(now + 0.18);
-        const o = ctx.createOscillator();
-        const og = ctx.createGain();
-        o.type = 'sawtooth'; o.frequency.setValueAtTime(120, now);
-        o.frequency.exponentialRampToValueAtTime(70, now + 0.16);
-        og.gain.setValueAtTime(0.18, now); og.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
-        o.connect(og); og.connect(out); o.start(now); o.stop(now + 0.18);
+    if (ctx.state === 'suspended') {
+        ctx.resume().then(schedule);
+    } else {
+        schedule();
     }
 }
 
@@ -1079,6 +979,10 @@ buildGameWrapper();
 createBoard();
 showModeModal();
 
+let isDragging = false;
+let dragPiece = null;
+let dragOriginSquare = null;
+let dragClone = null;
 let dragMoved = false;
 
 function getSquareFromPoint(x, y) {
