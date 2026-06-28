@@ -218,8 +218,6 @@ function addModeRow(modal, overlay, { icon, label, chips }) {
 }
 
 function startGame(modeKey) {
-    // First user gesture on the page — resume the audio context right here
-    // so it's already running by the time the first move sound fires.
     if (audioCtx.state === 'suspended') audioCtx.resume();
 
     gameMode = modeKey;
@@ -786,15 +784,7 @@ function restartGame() {
     showModeModal();
 }
 
-/* ─── Audio engine ─────────────────────────────────────────
-   Single playSound definition. A master gain node controls
-   overall volume (VOL) so we don't have to multiply every
-   individual gain value by hand. The AudioContext is resumed
-   on the first user gesture (mode-select click in startGame),
-   and playSound() also defers scheduling until resume()
-   actually resolves if the context is still suspended — this
-   is what fixes "no sound on the very first move".
-------------------------------------------------------------- */
+
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 const VOL = 0.35;
 
